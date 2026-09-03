@@ -57,7 +57,7 @@ commercial offering. If it is in the repository, it works.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest            # 97 tests, about 8 seconds
+python -m pytest            # 99 tests, about 9 seconds
 python -m whence demo --no-pause
 ```
 

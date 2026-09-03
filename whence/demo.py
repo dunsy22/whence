@@ -28,7 +28,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def run_demo(console, store_path: str = ".whence", pause: bool = True) -> None:
-    from .cli import _wrap, render_diff, render_narrative, short
+    from .cli import _wrap, prog, render_diff, render_narrative, short
 
     def beat(n: int, title: str, *framing: str) -> None:
         console.print()
@@ -214,9 +214,13 @@ def run_demo(console, store_path: str = ".whence", pause: bool = True) -> None:
     console.rule(style="dim", characters="-")
     console.print()
     console.print(_wrap(
-        "Every figure in this demo can still be interrogated. Try: "
-        "whence explain %s, or whence verify %s, or whence run --report "
-        "board-deck.html" % (second.net.id[:12], first.net.id[:12]), indent=2))
+        "Every figure in this demo can still be interrogated. With "
+        "`%s`, try:" % prog(), indent=2))
+    console.print()
+    for suggestion in ("explain %s" % second.net.id[:12],
+                       "verify %s" % first.net.id[:12],
+                       "run --report board-deck.html"):
+        console.print("    [dim]%s[/dim] %s" % (prog(), suggestion))
     console.print()
 
 

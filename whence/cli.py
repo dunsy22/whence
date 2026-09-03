@@ -56,6 +56,25 @@ def short(fid: str) -> str:
     return "whence:%s" % fid[:12]
 
 
+def prog() -> str:
+    """However this program was actually invoked.
+
+    `whence` when run from the console script, `python -m whence` when run as a
+    module. Anything this tool prints as a suggested next command has to be
+    something the reader can paste and have work -- and the bare name does not
+    always work: `whence` is a shell builtin in zsh and ksh (it is a `which`
+    lookup), and builtins win over programs on PATH. A macOS user typing
+    `whence explain ...` gets silence, not an error.
+
+    So the tool echoes back the invocation that just worked for this reader
+    rather than guessing on their behalf.
+    """
+    try:
+        return click.get_current_context().find_root().info_name or "whence"
+    except RuntimeError:          # called outside a click context
+        return "whence"
+
+
 def _signed(amount) -> str:
     return ("+" if amount >= 0 else "-") + usd(abs(amount))
 
@@ -337,8 +356,8 @@ def run(ctx, orders, pricebook, fx, adjustments, label, report_path):
     for name, digest in sorted(result.sources.items()):
         console.print("    [dim]%-26s sha256 %s[/dim]" % (name, digest[:16]))
     console.print()
-    console.print("  [dim]Ask it anything:[/dim]  whence explain %s"
-                  % result.net.id[:12])
+    console.print("  [dim]Ask it anything:[/dim]  %s explain %s"
+                  % (prog(), result.net.id[:12]))
     console.print()
 
     if report_path:
@@ -462,7 +481,7 @@ def attest(ctx, ref, out):
     console.print("  [dim]Hand this to anyone. It verifies with no access to "
                   "the ERP, the[/dim]")
     console.print("  [dim]pricebook, or this machine:[/dim]")
-    console.print("    whence verify-bundle %s" % info["path"])
+    console.print("    %s verify-bundle %s" % (prog(), info["path"]))
     console.print()
 
 

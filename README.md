@@ -36,7 +36,7 @@ Requires Python 3.11 or newer.
 
 ```bash
 pip install -e .
-whence demo
+python -m whence demo
 ```
 
 Or, without managing a virtual environment at all:
@@ -45,17 +45,29 @@ Or, without managing a virtual environment at all:
 uv run whence demo
 ```
 
-`whence demo` is a scripted seven-beat walkthrough of a fictional company's
-quarter close. It runs in about four seconds and pauses between beats; add
-`--no-pause` to run straight through.
+The demo is a scripted seven-beat walkthrough of a fictional company's quarter
+close. It runs in about four seconds and pauses between beats; add `--no-pause`
+to run straight through.
 
 ```bash
-whence run --report board-deck.html    # a board page you can open by double-clicking
-python -m pytest                       # 97 tests
+python -m whence run --report board-deck.html   # a board page you can double-click
+python -m pytest                                # 99 tests
 ```
 
-Every command also works as `python -m whence …` if the script directory is not
-on your `PATH`.
+> **Why `python -m whence` rather than just `whence`?**
+>
+> Installing does put a `whence` command on your `PATH`, and it works fine on
+> bash, Linux and Windows. But `whence` is also a **shell builtin in zsh and
+> ksh** — a `which`-style lookup — and builtins take precedence over installed
+> programs. On macOS, where zsh has been the default shell since Catalina,
+> typing `whence demo` runs the builtin and prints *nothing at all*: no output,
+> no error, just the prompt back.
+>
+> `python -m whence` has no such collision and works everywhere, so the
+> documentation uses it. If you are on zsh and want the short form,
+> `command whence demo` bypasses the builtin. The `uv run whence` line above is
+> safe either way — there, `whence` is an argument to `uv` rather than a command
+> the shell has to resolve.
 
 ---
 
@@ -78,8 +90,9 @@ roll up by region → apply adjustments → `Q3 Net Revenue`**.
 
 ## The demo, in full
 
-Verbatim output of `whence demo --no-pause`. Nothing below is a hardcoded
-string; every figure and every identifier is computed at the moment it prints.
+Verbatim output of `python -m whence demo --no-pause`. Nothing below is a
+hardcoded string; every figure and every identifier is computed at the moment
+it prints.
 
 ```text
   Whence - where did this number come from?
@@ -245,9 +258,12 @@ twice"
 
 -----------------------------------------------------------------------------------
 
-  Every figure in this demo can still be interrogated. Try: whence explain
-  0acf5ad5904c, or whence verify b0d8cc3b3885, or whence run --report board-
-  deck.html
+  Every figure in this demo can still be interrogated. With `python -m whence`,
+  try:
+
+    python -m whence explain 0acf5ad5904c
+    python -m whence verify b0d8cc3b3885
+    python -m whence run --report board-deck.html
 ```
 
 ---
@@ -401,7 +417,7 @@ whence/
 data/             the four fixture CSVs, their restated variants, and the
                   seeded generator that produced them
 demo/             two analysts' independently written scripts
-tests/            97 tests: determinism, tamper-detection, diff correctness,
+tests/            99 tests: determinism, tamper-detection, diff correctness,
                   bundle verification, spec conformance
 SPEC.md           the format, independent of this implementation
 ```
