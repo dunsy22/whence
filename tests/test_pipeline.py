@@ -100,3 +100,28 @@ def test_fixture_files_use_lf_endings():
         assert b"\r\n" not in path.read_bytes(), (
             "%s has CRLF line endings; its digest will not match a clone made "
             "on another platform" % path.name)
+
+
+# The published figure. This is the one test that, run on more than one
+# machine, actually demonstrates the claim the whole project rests on: that
+# the same inputs and the same logic produce the same identifier anywhere.
+#
+# On a single developer's laptop it proves very little. In CI, across Linux,
+# macOS and Windows on several Python versions, it proves the thing.
+#
+# If you regenerate the fixtures, this changes -- see data/README.md.
+PUBLISHED_Q3_VALUE = "4892582.47"
+PUBLISHED_Q3_ID = \
+    "b0d8cc3b38851b8593d0fbc62af6e695cd035b3b1da7e08345aa402fabcf2258"
+
+
+def test_the_close_reproduces_the_published_figure(tmp_path):
+    """Byte-for-byte agreement with the figure quoted in the README.
+
+    A failure here means one of three things, in decreasing order of interest:
+    the hash construction changed, the fixtures changed, or this platform
+    disagrees with the others -- which would falsify the central claim.
+    """
+    result = run_close(Store(tmp_path / ".whence").init(), label="published")
+    assert result.net.value == PUBLISHED_Q3_VALUE
+    assert result.net.id == PUBLISHED_Q3_ID

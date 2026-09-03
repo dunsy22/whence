@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Whence runs its tests on three operating systems on purpose.
+#
+# The claim this project makes is that the same inputs and the same logic
+# produce the same identifier anywhere, for anyone. That claim cannot be tested
+# on one laptop. The matrix below is the first place it is actually checked:
+# if Linux, macOS and Windows ever disagree about the Q3 figure's id, the
+# determinism test fails and the premise is wrong.
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:      # lets you trigger a run by hand from the Actions tab
+
+# If you push twice quickly, cancel the older run rather than paying for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Do not stop the other jobs when one fails. A platform-specific bug is
+      # exactly what this matrix exists to find, and it is far more useful to
+      # see which platforms failed than to see the first one that did.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Tests
+        run: python -m pytest -q
+
+      # The suite runs in one process, so it cannot catch a bug that only
+      # appears in a fresh interpreter -- which is precisely what the bundle
+      # verifier is on an auditor's machine. Running the demo end to end
+      # exercises real subprocesses, bundle export, and offline verification.
+      - name: Demo, end to end
+        run: python -m whence demo --no-pause
+
+      - name: Board report renders
+        run: python -m whence run --report board-deck.html
+
+  packaging:
+    name: wheel contains its assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # An editable install reads the report template straight from the source
+      # tree, so a packaging mistake stays invisible until someone does a real
+      # install. Build a wheel and confirm the assets are actually inside it.
+      - name: Build and inspect
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+          python - <<'PY'
+          import glob, zipfile, sys
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          missing = [n for n in ("whence/report/template.html",
+                                 "whence/report/report.css",
+                                 "whence/report/verify.js")
+                     if n not in names]
+          print("\n".join(sorted(names)))
+          sys.exit("missing from wheel: %s" % missing if missing else 0)
+          PY
