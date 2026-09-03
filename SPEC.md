@@ -2,7 +2,7 @@
 
 # The Whence Format
 
-**Version 0.1 · fact form `whence.fact.v1` · predicate `https://whence.dev/attestation/provenance/v0.1`**
+**Version 0.1 · fact form `whence.fact.v1` · predicate `https://github.com/dunsy22/whence/attestation/provenance/v0.1`**
 
 This document defines the Whence record format, its canonical serialization,
 its hash construction, and the `.wbundle` attestation format. It is written so
@@ -409,7 +409,7 @@ specification.
   "_type": "https://in-toto.io/Statement/v1",
   "subject": [{"name": "Q3 Net Revenue",
                "digest": {"sha256": "<root fact id>"}}],
-  "predicateType": "https://whence.dev/attestation/provenance/v0.1",
+  "predicateType": "https://github.com/dunsy22/whence/attestation/provenance/v0.1",
   "predicate": { ... }
 }
 ```
@@ -418,6 +418,16 @@ The subject digest is the root Fact's identifier — which, by §3.4, already *i
 the SHA-256 of that Fact's canonical serialization. The in-toto convention
 therefore holds exactly: the artifact is a record, named by the hash of its own
 content.
+
+**On the `predicateType` URI.** It does not resolve, and that is allowed: the
+in-toto specification says a TypeURI SHOULD resolve to a human-readable
+description but MAY be unresolvable, and is explicit that type URIs are not
+registered — the natural namespacing of URIs is what keeps them from colliding.
+What matters is that the namespace belongs to whoever defines the type, which a
+path under a GitHub account does. Verifiers MUST compare this string exactly
+and MUST NOT dereference it; a verifier that fetched a URL to decide whether a
+bundle is valid would have made verification depend on the network, which is
+the opposite of the point.
 
 ### 6.4 Predicate
 
