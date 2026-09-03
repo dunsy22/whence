@@ -9,8 +9,22 @@ actually embedded in it.
 
 import json
 import re
+from urllib.parse import urlsplit
 
+from whence import BUNDLE_PREDICATE
 from whence.report import render_report
+
+#: Absolute URLs the page is allowed to contain *as text*. The predicate host
+#: is derived from the constant rather than written out, so moving the
+#: attestation namespace to a different domain does not silently need a test
+#: edited to match. The others are standards and licence references.
+ALLOWED_URL_HOSTS = {
+    urlsplit(BUNDLE_PREDICATE).netloc,
+    "in-toto.io",
+    "www.apache.org",
+    "apache.org",
+    "www.w3.org",
+}
 
 
 def page(store, root):
@@ -29,12 +43,11 @@ def test_the_page_has_no_external_references(store, first):
     html = page(store, first.net.id)
     external = re.findall(r'(?:src|href)\s*=\s*["\'](?!#)([^"\']+)', html)
     assert external == [], "page reaches out to: %r" % external
-    for scheme in ("http://", "https://"):
-        # The only absolute URLs allowed are the type identifiers printed as
-        # text, never as a fetchable reference.
-        for hit in re.findall(re.escape(scheme) + r"\S+", html):
-            assert "in-toto.io" in hit or "whence.dev" in hit \
-                or "apache.org" in hit or "www.w3.org" in hit, hit
+    # The only absolute URLs allowed are type identifiers and standards
+    # references printed as text, never as something the page would fetch.
+    for hit in re.findall(r"https?://\S+", html):
+        host = urlsplit(hit.rstrip('",;)')).netloc
+        assert host in ALLOWED_URL_HOSTS, "unexpected URL on the page: %s" % hit
 
 
 def test_the_css_and_js_are_inlined_not_linked(store, first):
