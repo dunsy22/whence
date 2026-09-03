@@ -1,0 +1,297 @@
+{# SPDX-License-Identifier: Apache-2.0
+   Rendered to a single self-contained file. CSS and JS are inlined by
+   whence/report/__init__.py; there are no external requests of any kind. #}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ org }} — {{ period }} Board Pack</title>
+<style>
+{{ css | safe }}
+</style>
+</head>
+<body>
+
+<div id="strip">
+  <span class="dot"></span>
+  <span id="strip-text">This page carries its own evidence. Nothing has been checked yet.</span>
+  <span id="strip-detail"></span>
+  <button class="action" id="verify-btn">Verify this page</button>
+</div>
+
+<div class="sheet">
+
+  <div class="masthead">
+    <div class="org">{{ org }}</div>
+    <div class="meta">{{ period }} &middot; Board Pack &middot; page 4</div>
+  </div>
+
+  <h1>{{ headline.label }}</h1>
+  <div class="headline num prov" data-fact="{{ headline.id }}">{{ headline.display }}</div>
+  <div class="headline-id">whence:{{ headline.id[:16] }}</div>
+
+  <p class="commentary">{{ commentary }}</p>
+
+  <h2>Revenue by region</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th class="r">Orders</th>
+        <th class="r">Revenue (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for region in regions %}
+      <tr>
+        <td>{{ region.name }}</td>
+        <td class="r num">{{ region.orders }}</td>
+        <td class="r num prov" data-fact="{{ region.id }}">{{ region.display }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td>Gross revenue</td>
+        <td class="r num">{{ order_count }}</td>
+        <td class="r num prov" data-fact="{{ gross.id }}">{{ gross.display }}</td>
+      </tr>
+      {% for adj in adjustments %}
+      <tr>
+        <td>{{ adj.reason }}<span class="flag" title="Asserted by a person; no upstream system, so this figure cannot be recomputed.">ASSERTED</span></td>
+        <td class="r note">{{ adj.actor }}</td>
+        <td class="r num prov" data-fact="{{ adj.id }}">{{ adj.display }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td>{{ headline.label }}</td>
+        <td></td>
+        <td class="r num prov" data-fact="{{ headline.id }}">{{ headline.display }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Matters arising</h2>
+  <p>These were not raised by anyone. They are what the figure said about
+     itself when it was asked to account for its own derivation.</p>
+  <ul class="findings">
+    {% for finding in findings %}<li>{{ finding }}</li>
+    {% endfor %}
+  </ul>
+
+  <div class="colophon">
+    <p style="font-size:12px">Every underlined figure on this page is bound to a
+    cryptographic record of how it was produced. Click one to see where it came
+    from. <strong>Verify this page</strong> re-derives all
+    {{ fact_count }} of those records in your browser, using an implementation
+    of the hash rules written independently of the one that produced them.</p>
+    <table>
+      <tr><td>Generated</td><td>{{ generated }}</td></tr>
+      <tr><td>Figure</td><td><code>{{ headline.id }}</code></td></tr>
+      {% for name, digest in sources %}
+      <tr><td>{{ name }}</td><td><code>sha256 {{ digest[:32] }}</code></td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+</div>
+
+<div id="scrim"></div>
+<aside id="panel" aria-hidden="true">
+  <div class="panel-head">
+    <button class="close" id="panel-close" aria-label="Close">&times;</button>
+    <div class="label" id="panel-label"></div>
+    <div class="value num" id="panel-value"></div>
+    <div class="id" id="panel-id"></div>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+</aside>
+
+<script>
+{{ js | safe }}
+</script>
+<script id="whence-data" type="application/json">{{ data_json | safe }}</script>
+<script>
+(function () {
+  "use strict";
+  var DATA  = JSON.parse(document.getElementById("whence-data").textContent);
+  var FACTS = DATA.facts;
+  var EXPLANATIONS = DATA.explanations;
+  var OBS = DATA.observations;
+
+  // ---- side panel ------------------------------------------------------
+  var panel = document.getElementById("panel");
+  var scrim = document.getElementById("scrim");
+  var body  = document.getElementById("panel-body");
+
+  function money(text) {
+    var neg = text.charAt(0) === "-";
+    var t = neg ? text.slice(1) : text;
+    var parts = t.split(".");
+    var whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return (neg ? "-$" : "$") + whole + "." + (parts[1] || "00");
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function open(id) {
+    var fact = FACTS[id];
+    if (!fact) return;
+    var exp = EXPLANATIONS[id];
+
+    document.querySelectorAll(".prov.active").forEach(function (el) {
+      el.classList.remove("active");
+    });
+    document.querySelectorAll('[data-fact="' + id + '"]').forEach(function (el) {
+      el.classList.add("active");
+    });
+
+    document.getElementById("panel-label").textContent =
+      (exp && exp.label) || fact.metadata.label || fact.transform;
+    document.getElementById("panel-value").textContent = money(fact.value);
+    document.getElementById("panel-id").textContent = "whence:" + id;
+
+    var html = "";
+
+    if (exp) {
+      html += '<p class="summary">' + esc(exp.summary) + "</p>";
+    }
+
+    if (fact.kind === "asserted") {
+      html += '<div class="panel-warn"><strong>This number was typed by a ' +
+              'person.</strong> It has no upstream system and no ' +
+              'computational parent, so nothing here can confirm it is ' +
+              'right. What can be confirmed is that it has not been altered ' +
+              'since it was recorded.</div>';
+    }
+
+    if (exp && exp.components && exp.components.length) {
+      html += '<div class="kicker">Built from</div>';
+      exp.components.slice(0, 14).forEach(function (c) {
+        html += '<div class="comp' +
+                (c.kind === "asserted" ? " asserted" : "") +
+                '" data-goto="' + c.id + '">' +
+                '<span class="cl">' + esc(c.label) +
+                (c.note ? '<span class="cn">' + esc(c.note) + "</span>" : "") +
+                '</span><span class="cv">' + money(c.value) + "</span></div>";
+      });
+      if (exp.components.length > 14) {
+        html += '<div class="comp" style="cursor:default;color:#878c96">' +
+                "and " + (exp.components.length - 14) + " more</div>";
+      }
+    }
+
+    var detail = (exp && exp.provenance) || null;
+    if (detail && Object.keys(detail).length) {
+      html += '<div class="kicker">Where it came from</div><dl class="prov-detail">';
+      Object.keys(detail).forEach(function (k) {
+        var v = detail[k];
+        html += "<dt>" + esc(k) + "</dt><dd" +
+                (k.indexOf("digest") >= 0 ? ' class="mono"' : "") + ">" +
+                esc(v) + "</dd>";
+      });
+      if (exp.read_at) {
+        html += "<dt>first read</dt><dd>" + esc(exp.read_at) + "</dd>";
+      }
+      html += "</dl>";
+    } else if (!exp) {
+      html += '<div class="kicker">Record</div><dl class="prov-detail">' +
+              "<dt>kind</dt><dd>" + esc(fact.kind) + "</dd>" +
+              "<dt>transform</dt><dd>" + esc(fact.transform) + "</dd>" +
+              "<dt>parents</dt><dd>" + (fact.inputs || []).length + "</dd>";
+      (OBS[id] || []).forEach(function (o) {
+        html += "<dt>read from</dt><dd>" + esc(o.file) + " row " +
+                esc(o.row) + ", column " + esc(o.column) + "</dd>";
+      });
+      html += "</dl>";
+      if ((fact.inputs || []).length) {
+        html += '<div class="kicker">Built from</div>';
+        fact.inputs.forEach(function (i) {
+          var p = FACTS[i];
+          if (!p) return;
+          html += '<div class="comp" data-goto="' + i + '"><span class="cl">' +
+                  esc(p.metadata.label || p.transform) +
+                  '</span><span class="cv">' + money(p.value) + "</span></div>";
+        });
+      }
+    }
+
+    // Re-derive this one id on the spot, so the panel is making a live claim
+    // rather than repeating what the file says about itself.
+    var recomputed = window.WhenceVerify.factId(fact);
+    html += '<div class="panel-check">' +
+            (recomputed === id
+              ? '<span class="ok">&#10003; This record hashes to its own id, ' +
+                'recomputed in your browser just now.</span>'
+              : '<span class="no">&#10007; This record does NOT hash to its ' +
+                'id. It has been altered.</span>') +
+            "</div>";
+
+    body.innerHTML = html;
+    body.scrollTop = 0;
+    panel.classList.add("open");
+    panel.setAttribute("aria-hidden", "false");
+    scrim.classList.add("open");
+  }
+
+  function close() {
+    panel.classList.remove("open");
+    panel.setAttribute("aria-hidden", "true");
+    scrim.classList.remove("open");
+    document.querySelectorAll(".prov.active").forEach(function (el) {
+      el.classList.remove("active");
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    var prov = e.target.closest("[data-fact]");
+    if (prov) { open(prov.getAttribute("data-fact")); return; }
+    var goto_ = e.target.closest("[data-goto]");
+    if (goto_) { open(goto_.getAttribute("data-goto")); return; }
+  });
+  document.getElementById("panel-close").addEventListener("click", close);
+  scrim.addEventListener("click", close);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") close();
+  });
+
+  // ---- verification ----------------------------------------------------
+  var strip  = document.getElementById("strip");
+  var text   = document.getElementById("strip-text");
+  var detail = document.getElementById("strip-detail");
+  var btn    = document.getElementById("verify-btn");
+
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    strip.className = "checking";
+    text.textContent = "Re-deriving every record on this page…";
+    detail.textContent = "";
+
+    setTimeout(function () {
+      var started = performance.now();
+      var r = window.WhenceVerify.run(FACTS);
+      var ms = Math.max(1, Math.round(performance.now() - started));
+
+      if (r.failures.length) {
+        strip.className = "fail";
+        text.textContent = "Verification failed: " + r.failures[0];
+        detail.textContent = r.failures.length > 1
+          ? "and " + (r.failures.length - 1) + " more" : "";
+      } else {
+        strip.className = "pass";
+        text.textContent = "Verified — " + r.hashOk +
+          " records re-derived, " + r.sumsOk + " subtotals re-added" +
+          (r.asserted ? ", " + r.asserted +
+           " asserted figures flagged as unverifiable" : "") + ".";
+        detail.textContent = ms + " ms, entirely in this browser";
+      }
+      btn.disabled = false;
+      btn.textContent = "Verify again";
+    }, 30);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+adj_id,entry_date,amount_usd,reason,author,source
+ADJ-001,2026-09-30,80000.00,Q3 rebate accrual per CFO email,s.patel,"email from CFO, 2026-09-29"
+ADJ-002,2026-09-30,-12500.00,Reverse duplicate LATAM shipment billed twice,r.okonkwo,Slack thread #q3-close

@@ -1,0 +1,18 @@
+# Line endings are part of the record here, so they are not negotiable.
+#
+# whence/pipeline.py takes the SHA-256 of the raw bytes of every input file and
+# stores it as the observation digest. If Git were left to translate line
+# endings per platform -- which it does by default on Windows, where
+# core.autocrlf=true -- then the same CSV would hash differently depending on
+# who cloned the repository, and two people running the same close would record
+# different provenance for identical data.
+#
+# Forcing LF in the working tree on every platform keeps the digests stable.
+* text=auto eol=lf
+
+# Belt and braces for the files whose bytes are actually hashed.
+*.csv text eol=lf
+
+# The fixtures are the inputs to a hash; diffing them as text is what you want,
+# but never let a tool "helpfully" reformat them.
+data/*.csv -diff=nodiff linguist-generated=false
