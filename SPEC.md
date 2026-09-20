@@ -229,7 +229,42 @@ declaration that the operation is commutative).
 The reference implementation injects this automatically for every transform not
 declared commutative; see `whence/tracked.py`.
 
-### 3.7 What is deliberately not hashed
+### 3.7 Declared quantization
+
+A value's scale — how many decimal places it carries — is a property of the
+operation that produced it, not of the format. An order line is invoiced in
+cents and MUST round to them; an average selling price or a margin is not money
+anyone posts, and rounding it to cents would discard real precision for no
+reason.
+
+A transform whose result is **not** at the default scale of two decimal places
+MUST record its scale in metadata, under the key **`quantize`**, spelled
+`Ndp`. Since metadata is hashed, the same arithmetic at two different scales
+produces two different identifiers, and a verifier replaying the transform
+knows which serialization to compare against without needing to know which
+version of the producer's code minted the Fact.
+
+The absence of the key is the producer's declaration that the result is at two
+decimal places, exactly as the absence of `operands` (§3.6) declares that a
+transform is commutative. This is what makes the key additive rather than
+breaking: every identifier minted before `quantize` existed remains valid and
+unchanged, per §8.
+
+Two constraints on `N`:
+
+* It MUST NOT exceed 12. There is a bound so that every value remains a
+  bounded fixed-point string.
+* There is deliberately **no** "exact", "full precision" or unquantized
+  option. An unrounded decimal has no single text form — the same quantity may
+  print as `100`, `1E+2` or `100.000` depending on the operations that produced
+  it — and admitting one would violate §3.1, which is the rule the whole format
+  rests on.
+
+`cents` is an accepted spelling of `2dp` at the producer's API boundary, but it
+is a synonym, not a second declaration: both normalize to the default scale and
+therefore both write nothing.
+
+### 3.8 What is deliberately not hashed
 
 **Wall-clock time.** No Fact contains a timestamp of when it was computed or
 read. If it did, property 1 in §1 would be false: the same computation over the
@@ -268,8 +303,15 @@ For each Fact of kind `derived`:
    It MUST NOT report it as verified, and it MUST NOT silently skip it.
 3. Otherwise, collect the parents' `value` fields — in `operands` order if that
    metadata key is present (§3.6), otherwise in any order — apply the
-   transform, serialize the result by the producer's stated rules, and compare
+   transform, serialize the result at the scale the Fact declares in
+   `quantize` — two decimal places when the key is absent (§3.7) — and compare
    to `value` as a string.
+
+   The scale MUST be read from the Fact rather than from the verifier's own
+   registry. The Fact records what was done; a transform whose declared scale
+   is changed later must not retroactively invalidate the figures minted
+   before the change. A `quantize` value the verifier cannot parse makes the
+   Fact **not verifiable**, under the same rule as an unknown transform.
 
 Facts of kind `source` and `asserted` cannot be replayed, having no parents.
 A `source` value is checked by re-reading the file it was observed in, when
@@ -280,11 +322,15 @@ Transforms in the reference pipeline:
 
 | Transform | Arity | Commutative | Operation |
 |---|---|---|---|
-| `multiply` | 2 | yes | product, quantized to 2dp half-up |
-| `fx_convert` | 2 | no | amount × rate, quantized to 2dp half-up |
-| `sum_by_region` | n | yes | exact sum |
-| `sum_regions` | n | yes | exact sum |
-| `apply_adjustments` | n | yes | exact sum |
+| `multiply` | 2 | yes | product |
+| `fx_convert` | 2 | no | amount × rate |
+| `sum_by_region` | n | yes | sum |
+| `sum_regions` | n | yes | sum |
+| `apply_adjustments` | n | yes | sum |
+
+All five are money and all five are at the default scale, so none of them
+carries a `quantize` key. Half-up rounding to two decimal places is applied to
+each result as the Fact is minted.
 
 ---
 
@@ -334,7 +380,7 @@ so that `sed -n '13p'` finds the cited row.
  "sources": {"erp_orders.csv": "<sha256>", "...": "..."}}
 ```
 
-This is where clocks live (§3.7), and where the binding between a run and the
+This is where clocks live (§3.8), and where the binding between a run and the
 exact bytes of its input files is recorded.
 
 ---
@@ -487,6 +533,8 @@ An independent implementation is conforming when it:
 - [ ] rejects any document containing a JSON number, boolean or null;
 - [ ] rejects metadata keys outside `^[a-z][a-z0-9_.]*$`;
 - [ ] sorts `inputs` before hashing, and honours `operands` when replaying;
+- [ ] serializes a replayed result at the scale the Fact declares in
+      `quantize`, and treats an unparseable one as not verifiable;
 - [ ] rejects a `source` or `asserted` Fact with inputs, and a `derived` Fact
       without them;
 - [ ] never reports an `asserted` Fact as verified;

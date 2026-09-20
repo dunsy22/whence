@@ -42,7 +42,8 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Callable, Dict, Iterable, Mapping
 
-from .core import Fact, Store, current_store, dec, money
+from .core import (DEFAULT_SCALE, Fact, Store, current_store, dec,
+                   quant_name, quant_scale, quantize_text)
 
 __all__ = ["tracked", "REGISTRY", "Transform", "replay"]
 
@@ -54,6 +55,7 @@ class Transform:
     fn: Callable
     commutative: bool
     variadic: bool
+    scale: int = DEFAULT_SCALE
     doc: str = ""
 
 
@@ -63,7 +65,8 @@ class Transform:
 REGISTRY: Dict[str, Transform] = {}
 
 
-def tracked(name: str, *, commutative: bool = False, variadic: bool = False):
+def tracked(name: str, *, commutative: bool = False, variadic: bool = False,
+            quantize: str = "cents"):
     """Register `fn` as the transform `name` and fuse it to provenance.
 
     commutative=True says the operands are interchangeable: `a + b` and `b + a`
@@ -78,12 +81,26 @@ def tracked(name: str, *, commutative: bool = False, variadic: bool = False):
     `operands`, in the caller's order. Since metadata is hashed, two different
     orderings of the same parents get two different ids, and `verify` can
     replay the operands the right way round.
+
+    quantize says how many decimal places this transform's result carries:
+    "cents" (the default, two places) or "Ndp". It is a property of the
+    operation rather than of the framework, which is the distinction that
+    matters -- a line of revenue is invoiced in cents and must round to them;
+    a margin percentage is not money and must not.
+
+    A non-default scale is recorded in metadata under `quantize`, and is
+    therefore hashed. That is what keeps it verifiable: a replaying
+    implementation reads the scale off the Fact rather than having to know
+    which version of which transform produced it. The default scale is left
+    out entirely, exactly as a commutative transform leaves out `operands`, so
+    every id minted before this parameter existed is unchanged.
     """
+    scale = quant_scale(quantize)
 
     def decorate(fn: Callable) -> Callable:
         REGISTRY[name] = Transform(
             name=name, fn=fn, commutative=commutative,
-            variadic=variadic, doc=(fn.__doc__ or "").strip(),
+            variadic=variadic, scale=scale, doc=(fn.__doc__ or "").strip(),
         )
 
         @wraps(fn)
@@ -107,9 +124,15 @@ def tracked(name: str, *, commutative: bool = False, variadic: bool = False):
             metadata.setdefault("label", name)
             if not commutative:
                 metadata["operands"] = ",".join(f.id for f in facts)
+            # Overwritten rather than defaulted: a caller-supplied `quantize`
+            # disagreeing with the scale actually applied would send every
+            # later verifier down the wrong path.
+            metadata.pop("quantize", None)
+            if scale != DEFAULT_SCALE:
+                metadata["quantize"] = quant_name(scale)
 
             fact = Fact(
-                value=money(result),
+                value=quantize_text(result, scale),
                 kind="derived",
                 transform=name,
                 inputs=tuple(f.id for f in facts),
@@ -148,7 +171,19 @@ def replay(fact: Fact, store: Store) -> str | None:
     ids = _operand_order(fact)
     values = [dec(store.get(i).value) for i in ids]
     result = t.fn(values) if t.variadic else t.fn(*values)
-    return money(result)
+    return quantize_text(result, _fact_scale(fact))
+
+
+def _fact_scale(fact: Fact) -> int:
+    """The scale to serialize a replayed result at.
+
+    Read off the Fact, not off the registry, for the same reason
+    `_operand_order` is: the Fact is the record of what was done. Changing a
+    transform's declared scale later must not retroactively invalidate the
+    figures produced before the change -- those say what they used.
+    """
+    spec = fact.metadata.get("quantize")
+    return DEFAULT_SCALE if spec is None else quant_scale(spec)
 
 
 def _operand_order(fact: Fact) -> list:

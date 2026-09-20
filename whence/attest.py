@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import BUNDLE_PREDICATE, FACT_FORM, __version__
-from .core import (Fact, IntegrityError, MemoryStore, Store, compute_id, dec)
+from .core import (CanonicalizationError, Fact, IntegrityError, MemoryStore,
+                   Store, compute_id, dec)
 from .tracked import REGISTRY, replay
 
 # ---------------------------------------------------------------------------
@@ -200,7 +201,15 @@ def verify_closure(store: Store, root: str) -> VerifyReport:
                     "%s: unknown transform %r -- this build cannot check it"
                     % (fid[:12], fact.transform))
                 continue
-            got = replay(fact, store)
+            try:
+                got = replay(fact, store)
+            except CanonicalizationError as exc:
+                # A malformed `quantize` declaration. The record is intact --
+                # it hashed correctly a moment ago -- but it does not say
+                # anything this build can act on, so it is not verified.
+                report.failures.append(
+                    "%s (%s): %s" % (fid[:12], fact.label, exc))
+                continue
             if got != fact.value:
                 report.failures.append(
                     "%s (%s): stored %s but its inputs produce %s"

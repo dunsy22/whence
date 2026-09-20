@@ -145,6 +145,12 @@
 
   var ADDITIVE = { sum_by_region: 1, sum_regions: 1, apply_adjustments: 1 };
 
+  // A `quantize` key means the producer used a scale other than cents; its
+  // absence is the declaration that cents were used (SPEC.md section 3.7).
+  function declaresScale(fact) {
+    return !!(fact && fact.metadata && fact.metadata.quantize);
+  }
+
   // ---- the check --------------------------------------------------------
 
   function verifyAll(facts) {
@@ -182,6 +188,16 @@
 
       if (fact.kind === "asserted") { result.asserted++; return; }
       if (fact.kind === "source")   { result.sources++;  return; }
+
+      // Everything below counts in integer cents, so a fact that declares a
+      // different scale -- or that draws on one -- is outside what this page
+      // can check. `whence verify` handles any scale; saying so is better
+      // than adding two-decimal numbers that were never two-decimal.
+      if (declaresScale(fact) ||
+          (fact.inputs || []).some(function (i) { return declaresScale(facts[i]); })) {
+        result.notRecomputable++;
+        return;
+      }
 
       if (ADDITIVE[fact.transform]) {
         var total = 0n;

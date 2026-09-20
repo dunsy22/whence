@@ -40,7 +40,7 @@ import json
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Dict, Iterator, Mapping, Sequence
 
@@ -49,6 +49,8 @@ from . import FACT_FORM
 __all__ = [
     "Fact", "Store", "MemoryStore", "IntegrityError", "CanonicalizationError",
     "canonical_bytes", "compute_id", "money", "dec",
+    "quant_scale", "quant_name", "quantize_text",
+    "DEFAULT_SCALE", "MAX_SCALE",
     "source_fact", "asserted_fact", "active_store", "current_store",
 ]
 
@@ -72,6 +74,47 @@ class CanonicalizationError(Exception):
 
 CENTS = Decimal("0.01")
 
+#: Decimal places a value carries when a transform says nothing. Two, because
+#: money is the overwhelming case and §3.1 of SPEC.md is written around it.
+DEFAULT_SCALE = 2
+
+#: The largest scale a transform may declare.
+#:
+#: There is a cap, and there is deliberately no "exact" or "full precision"
+#: option, because §3.1 requires every hashed value to have one unambiguous
+#: text form. An unquantized Decimal does not: the same quantity can print as
+#: "100", "1E+2" or "100.000" depending on the operations that produced it,
+#: and two implementations would disagree on the id for reasons that have
+#: nothing to do with the data. Every value is fixed-point at a declared
+#: scale, or it is not a Whence value.
+MAX_SCALE = 12
+
+_QUANT_SPEC = re.compile(r"\A(\d{1,2})dp\Z")
+
+
+def quant_scale(spec: Any) -> int:
+    """Normalize a quantization spec to a number of decimal places.
+
+    "cents" and "2dp" are the same scale and therefore the same declaration --
+    they must be, or two producers spelling the same intent differently would
+    mint different ids for identical arithmetic.
+    """
+    if spec == "cents":
+        return DEFAULT_SCALE
+    if isinstance(spec, str):
+        match = _QUANT_SPEC.match(spec)
+        if match and int(match.group(1)) <= MAX_SCALE:
+            return int(match.group(1))
+    raise CanonicalizationError(
+        "quantization must be 'cents' or 'Ndp' with N <= %d, got %r"
+        % (MAX_SCALE, spec)
+    )
+
+
+def quant_name(scale: int) -> str:
+    """The spelling recorded in metadata. Exactly one per scale."""
+    return "%ddp" % scale
+
 
 def dec(x: Any) -> Decimal:
     """Parse decimal text exactly.  Never routes through float."""
@@ -84,16 +127,28 @@ def dec(x: Any) -> Decimal:
     return Decimal(str(x).strip())
 
 
-def money(x: Any) -> str:
-    """Canonical money text: fixed-point, exactly two decimal places.
+def quantize_text(x: Any, scale: int = DEFAULT_SCALE) -> str:
+    """Canonical fixed-point text at `scale` decimal places, ROUND_HALF_UP.
 
-    ROUND_HALF_UP, applied at the moment a Fact is minted -- so the rounding is
-    part of the record and part of the hash, not a display choice made later.
+    Applied at the moment a Fact is minted -- so the rounding is part of the
+    record and part of the hash, not a display choice made later. Which scale
+    was applied is recorded too, when it is not the default; see tracked.py.
     """
-    q = dec(x).quantize(CENTS, rounding=ROUND_HALF_UP)
+    exponent = Decimal(1).scaleb(-scale)
+    try:
+        q = dec(x).quantize(exponent, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise CanonicalizationError(
+            "%r has too many digits to express at %s" % (x, quant_name(scale))
+        ) from None
     if q == 0:  # collapse the signed zero Decimal is entitled to hand back
-        q = Decimal("0.00")
+        q = Decimal(0).quantize(exponent)
     return format(q, "f")
+
+
+def money(x: Any) -> str:
+    """Canonical money text: fixed-point, exactly two decimal places."""
+    return quantize_text(x, DEFAULT_SCALE)
 
 
 # ---------------------------------------------------------------------------
