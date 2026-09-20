@@ -23,7 +23,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4"]
+# duckdb is only needed to reconcile against a warehouse, and only by
+# whence.warehouse, which imports it lazily. A real deployment builds its own
+# DB-API connection -- snowflake-connector-python, psycopg -- and hands it to
+# reconcile(), which never asks what made it.
+warehouse = ["duckdb>=1.0"]
+# The warehouse tests skip themselves without a driver, so dev pulls one in:
+# a reconciliation that only ever runs on the author's laptop is not tested.
+dev = ["pytest>=7.4", "whence[warehouse]"]
 
 [project.scripts]
 whence = "whence.cli:main"

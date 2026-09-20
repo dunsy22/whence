@@ -65,6 +65,17 @@ class SourceFile:
                 return row
         raise KeyError("no row in %s matching %r" % (self.name, match))
 
+    def coordinates(self, row: Mapping[str, str], column: str) -> dict:
+        """Where this cell was seen, in whatever terms this source uses.
+
+        A file says file/row/column/digest. A warehouse table says something
+        else entirely -- see whence/warehouse.py. Keeping the vocabulary with
+        the source rather than in cell_fact is what lets one close run against
+        either, instead of there being two closes to keep in agreement.
+        """
+        return {"file": self.name, "row": row["_line"],
+                "column": column, "digest": self.digest}
+
 
 def load(path: Path | str) -> SourceFile:
     path = Path(path)
@@ -99,8 +110,7 @@ def cell_fact(src: SourceFile, row: Mapping[str, str], column: str,
     })
     store = current_store()
     store.put(fact)
-    store.observe(fact.id, file=src.name, row=row["_line"], column=column,
-                  digest=src.digest)
+    store.observe(fact.id, **src.coordinates(row, column))
     return fact
 
 
@@ -177,17 +187,27 @@ def run_close(store: Store,
               adjustments_path: Path | str = None,
               label: str = "Q3 close") -> RunResult:
     """Execute the quarter close against the four input files."""
-    orders_path = Path(orders_path or DATA / "erp_orders.csv")
-    pricebook_path = Path(pricebook_path or DATA / "pricebook_v3.csv")
-    fx_path = Path(fx_path or DATA / "fx_rates.csv")
-    adjustments_path = Path(adjustments_path or DATA / "adjustments.csv")
+    return close(
+        store,
+        orders=load(Path(orders_path or DATA / "erp_orders.csv")),
+        pricebook=load(Path(pricebook_path or DATA / "pricebook_v3.csv")),
+        fx=load(Path(fx_path or DATA / "fx_rates.csv")),
+        adjustments=load(Path(adjustments_path or DATA / "adjustments.csv")),
+        label=label,
+    )
 
+
+def close(store: Store, orders, pricebook, fx, adjustments,
+          label: str = "Q3 close") -> RunResult:
+    """The close itself, over four already-read tables.
+
+    Nothing below knows or cares whether a table came from a CSV or out of a
+    warehouse. That is the whole point: if reconciling against a warehouse
+    meant a second copy of this function, the two would drift and the
+    comparison would stop meaning anything -- which is exactly the failure
+    tracked.py exists to prevent one level down.
+    """
     with active_store(store):
-        orders = load(orders_path)
-        pricebook = load(pricebook_path)
-        fx = load(fx_path)
-        adjustments = load(adjustments_path)
-
         price_facts = {}
         rate_facts = {}
         by_region: Dict[str, List[Fact]] = {}
@@ -343,6 +363,5 @@ def _adjustment_fact(src: SourceFile, row: Mapping[str, str]) -> Fact:
     })
     store = current_store()
     store.put(fact)
-    store.observe(fact.id, file=src.name, row=row["_line"],
-                  column="amount_usd", digest=src.digest)
+    store.observe(fact.id, **src.coordinates(row, "amount_usd"))
     return fact

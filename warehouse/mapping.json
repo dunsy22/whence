@@ -1,0 +1,29 @@
+{
+  "warehouse": "duckdb:warehouse/halloway.duckdb",
+
+  "sources": {
+    "orders":      { "table": "stg_orders",      "key": ["order_id"] },
+    "pricebook":   { "table": "stg_pricebook",   "key": ["sku"] },
+    "fx":          { "table": "stg_fx_rates",    "key": ["rate_date", "currency"] },
+    "adjustments": { "table": "stg_adjustments", "key": ["adj_id"] }
+  },
+
+  "figures": [
+    { "key": "net:q3",       "label": "Q3 Net Revenue",
+      "model": "fct_revenue_summary", "column": "net_revenue_usd" },
+    { "key": "gross",        "label": "Gross revenue before adjustments",
+      "model": "fct_revenue_summary", "column": "gross_revenue_usd" },
+    { "key": "region:AMER",  "label": "AMER subtotal",
+      "model": "fct_region_revenue",  "column": "region_revenue_usd",
+      "where": { "region": "AMER" } },
+    { "key": "region:EMEA",  "label": "EMEA subtotal",
+      "model": "fct_region_revenue",  "column": "region_revenue_usd",
+      "where": { "region": "EMEA" } },
+    { "key": "region:APAC",  "label": "APAC subtotal",
+      "model": "fct_region_revenue",  "column": "region_revenue_usd",
+      "where": { "region": "APAC" } },
+    { "key": "region:LATAM", "label": "LATAM subtotal",
+      "model": "fct_region_revenue",  "column": "region_revenue_usd",
+      "where": { "region": "LATAM" } }
+  ]
+}

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The command line. Six commands, plus the demo.
+"""The command line. Seven commands, plus the demo.
 
 Every command's output is written to be read by someone who has never seen the
 tool and does not want to learn what a Merkle DAG is. Ids are shown truncated
@@ -163,6 +163,12 @@ def render_narrative(console, store, fid, show_findings: bool = True,
         for finding in exp.findings:
             console.print(_wrap(finding, indent=indent + 2,
                                 bullet="[yellow]![/yellow] "))
+            console.print()
+        # Green, and after the warnings. Corroboration is the opposite of a
+        # finding and must not be printed as though it were one.
+        for note in exp.corroboration:
+            console.print(_wrap(note, indent=indent + 2,
+                                bullet="[green]OK[/green] "))
             console.print()
 
 
@@ -509,6 +515,87 @@ def verify_bundle_cmd(path, dump):
         console.print()
 
     if not report.ok:
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+
+@main.command(name="reconcile")
+@click.option("--mapping", "mapping_path", default="warehouse/mapping.json",
+              show_default=True, type=click.Path(exists=True, dir_okay=False),
+              help="Which tables hold the source rows, and which model "
+                   "columns are reported figures.")
+@click.option("--dbt-target", "dbt_target", default=None,
+              type=click.Path(file_okay=False),
+              help="A dbt target/ directory, to record which invocation "
+                   "produced the figures.")
+@click.option("--label", default="warehouse reconciliation",
+              help="A name for this run.")
+@click.pass_context
+def reconcile_cmd(ctx, mapping_path, dbt_target, label):
+    """Recompute a warehouse's figures and check they agree."""
+    from .warehouse import connect, load_mapping, reconcile
+
+    store = _store(ctx)
+    mapping = load_mapping(mapping_path)
+    conn = connect(mapping["warehouse"])
+    report = reconcile(store, conn, mapping, label=label,
+                       dbt_target=dbt_target)
+
+    console.print()
+    console.print("  Reconciling [dim]%s[/dim]" % report.warehouse)
+    console.print("  [dim]%d source tables read, %d figures recomputed[/dim]"
+                  % (len(report.sources), len(report.figures)))
+    console.print()
+
+    table = Table(box=None, pad_edge=False, show_header=True, header_style="dim")
+    table.add_column("  ", width=4, no_wrap=True)
+    table.add_column("figure")
+    table.add_column("warehouse", justify="right")
+    table.add_column("whence", justify="right")
+    table.add_column("delta", justify="right")
+    for figure in report.figures:
+        delta = figure.delta
+        table.add_row(
+            "  " + (OK if figure.agrees else BAD),
+            figure.label,
+            usd(figure.warehouse_value) if figure.found else "[red]missing[/red]",
+            usd(figure.whence_value) if figure.whence_value
+            else "[red]not computed[/red]",
+            "-" if figure.agrees else
+            ("?" if delta is None else "[red]%s[/red]" % _signed(delta)),
+        )
+    console.print(table)
+    console.print()
+
+    for name, digest in sorted(report.sources.items()):
+        console.print("    [dim]%-20s sha256 %s[/dim]" % (name, digest[:16]))
+    if report.dbt.get("invocation_id"):
+        console.print("    [dim]%-20s %s[/dim]"
+                      % ("dbt invocation", report.dbt["invocation_id"]))
+    console.print()
+
+    if report.agrees:
+        console.print("  [bold green]AGREED[/bold green]  [dim]every figure "
+                      "recomputed from the warehouse's own rows[/dim]")
+        console.print("  [dim]matched what the warehouse published.[/dim]")
+        console.print()
+        console.print("  %s  [dim]is the reconciled figure[/dim]"
+                      % short(report.root))
+        console.print()
+        console.print("  [dim]Ask it anything:  %s explain %s[/dim]"
+                      % (prog(), report.root[:12]))
+    else:
+        console.print("  [bold red]DIVERGED[/bold red]  [dim]%d of %d figures "
+                      "do not match.[/dim]"
+                      % (len(report.divergent), len(report.figures)))
+        console.print("  [dim]The two systems were given the same rows and "
+                      "produced different[/dim]")
+        console.print("  [dim]answers. One of them is wrong and the "
+                      "difference is above.[/dim]")
+    console.print()
+
+    if not report.agrees:
         sys.exit(1)
 
 

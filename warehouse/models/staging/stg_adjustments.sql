@@ -11,5 +11,9 @@ select
     cast(amount_usd as decimal(18,2)) as amount_usd,
     reason,
     author,
-    source as evidence
+    -- Kept under its source-system name rather than renamed to something
+    -- tidier. Renaming in staging is ordinary dbt practice and a real
+    -- deployment would carry the correspondence in the figure mapping; here
+    -- the prototype keeps its moving parts to a minimum by staying faithful.
+    source
 from {{ source('raw', 'adjustments') }}

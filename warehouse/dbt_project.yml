@@ -39,6 +39,8 @@ vars:
 
 models:
   halloway:
+    # Tables throughout, including staging. In a real deployment these rows are
+    # landed by an ingestion tool and the warehouse owns them; modelling them
+    # as views over the CSVs would leave the database depending on a relative
+    # path resolved from whatever directory the client happened to run in.
     +materialized: table
-    staging:
-      +materialized: view

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 from .core import Fact, Store, dec
 
@@ -70,6 +70,12 @@ class Explanation:
     summary: str
     components: List[Component] = field(default_factory=list)
     findings: List[str] = field(default_factory=list)
+    #: Independent checks that passed. Kept apart from `findings` because they
+    #: are the opposite kind of thing -- a finding is a soft spot a reviewer
+    #: should worry about, corroboration is evidence they should be reassured
+    #: by -- and a page that renders both with the same warning marker is
+    #: telling the reader something untrue.
+    corroboration: List[str] = field(default_factory=list)
     provenance: Dict[str, str] = field(default_factory=dict)
     read_at: str = ""
     closure_size: int = 0
@@ -102,6 +108,7 @@ def explain(store: Store, fid: str) -> Explanation:
         exp.components.sort(key=_component_order)
 
     exp.findings = findings(store, closure)
+    exp.corroboration = corroboration(store, closure)
     return exp
 
 
@@ -279,6 +286,22 @@ def findings(store: Store, closure: Dict[str, Fact]) -> List[str]:
                                 for f in off_list)[:6]))
         )
 
+    for run in _reconciliations(store, closure):
+        entries = run.get("reconciliation") or []
+        off = [e for e in entries if not e.get("agrees")]
+        if off:
+            out.append(
+                "%d of %d figures disagree with %s, which was given the same "
+                "rows: %s."
+                % (len(off), len(entries),
+                   run.get("warehouse", "a second system"),
+                   "; ".join("%s says %s, this says %s"
+                             % (e.get("label", e.get("figure", "?")),
+                                usd(e.get("warehouse") or "0"),
+                                usd(e.get("whence") or "0"))
+                             for e in off[:3]))
+            )
+
     stale = sorted({f.metadata["modified_by"] for f in prices
                     if f.metadata.get("effective_date", "") > "2026-07-01"
                     and f.metadata.get("modified_by")})
@@ -290,6 +313,35 @@ def findings(store: Store, closure: Dict[str, Fact]) -> List[str]:
             % (len(changed), ", ".join(stale), ", ".join(changed))
         )
 
+    return out
+
+
+def _reconciliations(store: Store, closure: Dict[str, Fact]) -> List[dict]:
+    """Runs in which a second system was asked the same question.
+
+    Neither agreement nor disagreement is a property of the figure -- it is a
+    property of a run, two systems having been asked at one moment -- which is
+    why it lives in the journal and gets joined back in here rather than being
+    hashed into a Fact.
+    """
+    return [run for run in store.all_runs()
+            if run.get("kind") == "reconciliation"
+            and run.get("root") in closure]
+
+
+def corroboration(store: Store, closure: Dict[str, Fact]) -> List[str]:
+    """Independent checks that passed."""
+    out = []
+    for run in _reconciliations(store, closure):
+        entries = run.get("reconciliation") or []
+        if entries and all(e.get("agrees") for e in entries):
+            out.append(
+                "%s independently recomputed from %s and matched, "
+                "including %s."
+                % (_plural(len(entries), "figure"),
+                   run.get("warehouse", "a second system"),
+                   entries[0].get("label", entries[0].get("figure", "?")))
+            )
     return out
 
 
@@ -338,26 +390,39 @@ def sighting(store: Store, fact: Fact) -> Dict[str, str]:
     return obs[0] if obs else {}
 
 
-def _seen_in(store: Store, fact: Fact) -> str:
-    """Every file this exact claim has been read out of.
+def _origin(obs: Mapping[str, str]) -> str:
+    """What an observation calls the thing it read from.
 
-    More than one is normal and informative: it means the same number survived
-    a re-export unchanged, which is precisely what you want to know during a
-    restatement.
+    A file says `file`; a warehouse table says `table`. The vocabulary belongs
+    to the source, so the presentation layer asks rather than assumes.
     """
-    files = sorted({o.get("file", "?") for o in store.observations(fact.id)})
-    return ", ".join(files)
+    return obs.get("file") or obs.get("table") or "?"
+
+
+def _seen_in(store: Store, fact: Fact) -> str:
+    """Every place this exact claim has been read from.
+
+    More than one is normal and informative. Two files means the same number
+    survived a re-export unchanged, which is what you want to know during a
+    restatement; a file and a warehouse table means the two systems agree on
+    the claim itself, not merely on the total it rolls up into.
+    """
+    return ", ".join(sorted({_origin(o) for o in store.observations(fact.id)}))
 
 
 def _source_provenance(store: Store, fact: Fact) -> Dict[str, str]:
     m = fact.metadata
     obs = sighting(store, fact)
     out = {
-        "file": _seen_in(store, fact) or "(not recorded)",
+        "read from": _seen_in(store, fact) or "(not recorded)",
         "row": obs.get("row", ""),
         "column": obs.get("column", ""),
-        "file digest": obs.get("digest", ""),
+        "digest": obs.get("digest", ""),
     }
+    if obs.get("warehouse"):
+        out["warehouse"] = obs["warehouse"]
+    if obs.get("query_id"):
+        out["query id"] = obs["query_id"]
     for extra in ("sku", "order_id", "region", "currency", "effective_date",
                   "modified_by", "approval_ref", "rate_date", "order_date"):
         if extra in m:
@@ -373,8 +438,7 @@ def _asserted_provenance(store: Store, fact: Fact) -> Dict[str, str]:
         "entry date": m.get("entry_date", ""),
         "stated reason": m.get("reason", ""),
         "stated evidence": m.get("evidence", ""),
-        "transcribed in": "%s row %s" % (obs.get("file", "?"),
-                                         obs.get("row", "?")),
+        "transcribed in": "%s row %s" % (_origin(obs), obs.get("row", "?")),
         "upstream system": "none - this figure cannot be recomputed",
     }
 

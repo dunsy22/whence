@@ -357,6 +357,7 @@ without a test failing.
 | `whence diff <a> <b>` | Explain why two figures differ, in business language |
 | `whence attest <id> -o f.wbundle` | Export a portable, verifiable bundle |
 | `whence verify-bundle f.wbundle` | Verify with no access to source systems |
+| `whence reconcile` | Recompute a warehouse's figures and check they agree |
 
 `explain` also takes `--tree` for the full DAG and `--json` for machines; the
 narrative is the default because it is the view that has to land with people
@@ -411,14 +412,16 @@ whence/
   explain.py      narrative rendering
   diff.py         minimal causal difference
   attest.py       bundle export and standalone verification
-  cli.py          six commands, plus shared renderers
+  warehouse.py    reading a warehouse, and reconciling what it computed
+  cli.py          seven commands, plus shared renderers
   demo.py         the scripted walkthrough
   report/         jinja2 template, CSS and JS, inlined at render time
 data/             the four fixture CSVs, their restated variants, and the
                   seeded generator that produced them
 demo/             two analysts' independently written scripts
-tests/            99 tests: determinism, tamper-detection, diff correctness,
-                  bundle verification, spec conformance
+warehouse/        the same close as a dbt project, so the two can be compared
+tests/            154 tests: determinism, tamper-detection, diff correctness,
+                  bundle verification, spec conformance, reconciliation
 SPEC.md           the format, independent of this implementation
 ```
 
@@ -441,6 +444,10 @@ This is a demonstration of an idea, not a product.
 - **The pipeline is one hardcoded close.** Real ledgers have hundreds of
   transforms, intercompany eliminations, and revenue recognition rules that do
   not fit in a 250-line file.
+- **Reconciliation reads whole tables into memory.** Fine for 200 orders and
+  hopeless at forty million. Facts would have to be minted at the reported
+  grain, with the rows beneath them in a Merkle tree, so that a bundle carries
+  a root and an inclusion proof rather than every row.
 - **The browser verifier re-adds sums but does not re-run multiplications.**
   Reproducing decimal multiplication with identical rounding in two languages
   is exactly the kind of thing that silently disagrees, so the page says which
@@ -457,7 +464,11 @@ This is a demonstration of an idea, not a product.
 
 - **Source-system connectors** — reading from NetSuite, SAP, Snowflake and the
   like directly, so facts are minted at the boundary instead of from a CSV
-  export somebody made.
+  export somebody made. [`warehouse/`](warehouse/) is a first cut at this: the
+  same close as a dbt project, with `whence reconcile` recomputing its figures
+  from the warehouse's own rows and checking they agree. Reads go through
+  DB-API 2.0, so the DuckDB it develops against is a connection string away
+  from a real warehouse. What it does not yet survive is scale.
 - **A spreadsheet add-in.** Numbers escape into Excel immediately and forever.
   Provenance that does not survive a copy-paste into a spreadsheet has not
   solved the actual problem.
