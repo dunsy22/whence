@@ -26,7 +26,10 @@ flagged, and no system that quietly launders them into the total is telling you
 the truth.
 
 > **This is a proof of concept**, built to demonstrate an idea. It is not
-> production software. See [Honest limitations](#honest-limitations).
+> production software. In particular, **bundles are unsigned**: their hashes
+> prove what a bundle says, and that nothing in it has been altered, but
+> nothing at all about who produced it. See
+> [Honest limitations](#honest-limitations).
 
 ---
 
