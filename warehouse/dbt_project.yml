@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Halloway close, as a data team would actually build it.
+#
+# This project computes the same figure as whence/pipeline.py, in SQL, in a
+# warehouse -- so that Whence can check it rather than replace it.
+
+name: 'halloway'
+version: '0.1.0'
+config-version: 2
+profile: 'halloway'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Where the raw CSVs live, relative to this directory. In a real deployment
+  # these are warehouse tables loaded by Fivetran or similar; reading the same
+  # files the Python pipeline reads is what makes the two comparable at all.
+  data_dir: "../data"
+
+  # Which snapshot of each input to close on. Switching these reproduces the
+  # restatement demo inside the warehouse: pricebook_v4 is the repriced book,
+  # erp_orders_restated adds the late LATAM orders.
+  orders_table: "erp_orders"
+  pricebook_table: "pricebook_v3"
+
+  # All lines translate at this closing rate -- matching pipeline._rate_row_for.
+  close_date: "2026-09-30"
+
+  # WHERE money is rounded to cents. This is the setting the whole exercise
+  # exists to surface; see macros/money.sql.
+  #   per_step -- round every intermediate figure, as whence/tracked.py does
+  #   at_end   -- carry full precision, round only reported figures, as SQL
+  #               is normally written
+  rounding_policy: "per_step"
+
+models:
+  halloway:
+    +materialized: table
+    staging:
+      +materialized: view

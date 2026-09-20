@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      The four files the quarter closes on. dbt-duckdb reads them in place as
+      external tables, so the warehouse and whence/pipeline.py are demonstrably
+      looking at the same bytes.
+    meta:
+      # all_varchar: every column arrives as text and is cast explicitly in
+      # staging. Letting DuckDB infer types would quietly make prices DOUBLE,
+      # which is exactly the class of error core.py refuses to permit.
+      external_location: >-
+        read_csv('{{ var("data_dir") }}/{name}.csv',
+                 header = true, all_varchar = true)
+    tables:
+      - name: erp_orders
+      - name: erp_orders_restated
+      - name: pricebook_v3
+      - name: pricebook_v4
+      - name: fx_rates
+      - name: adjustments

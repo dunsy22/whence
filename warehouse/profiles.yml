@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# DuckDB: the whole warehouse is one file next to this one. Swapping this
+# block for a Snowflake target is the only change the models need -- which is
+# the point of developing against DuckDB first.
+halloway:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "halloway.duckdb"
+      threads: 4

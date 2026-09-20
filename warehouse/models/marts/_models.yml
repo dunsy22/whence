@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+version: 2
+
+models:
+  - name: int_order_lines
+    description: One row per order line, priced at approved list and translated to USD.
+    columns:
+      - name: order_id
+        description: Natural key. One row per order in this dataset.
+        data_tests: [unique, not_null]
+      - name: line_revenue_usd
+        data_tests: [not_null]
+      - name: usd_per_unit
+        description: >
+          Closing rate for the order's currency. A null here means the rate
+          file has no row for that currency at the close date, which would
+          silently drop the line from revenue -- so it is tested, not assumed.
+        data_tests: [not_null]
+
+  - name: fct_region_revenue
+    description: Regional subtotals. Mirrors the sum_by_region transform.
+    columns:
+      - name: region
+        data_tests: [unique, not_null]
+
+  - name: fct_revenue_summary
+    description: The reported figure. One row.
+    columns:
+      - name: net_revenue_usd
+        data_tests: [not_null]

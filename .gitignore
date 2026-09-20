@@ -21,3 +21,11 @@ venv/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Warehouse prototype. Rebuild with `dbt run` from warehouse/.
+warehouse/halloway.duckdb
+# dbt writes a per-machine anonymous id here; it is not project state.
+warehouse/.user.yml
+warehouse/target/
+warehouse/logs/
+warehouse/dbt_packages/
