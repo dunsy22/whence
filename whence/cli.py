@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The command line. Seven commands, plus the demo.
+"""The command line. Eight commands, plus the demo.
 
 Every command's output is written to be read by someone who has never seen the
 tool and does not want to learn what a Merkle DAG is. Ids are shown truncated
@@ -89,7 +89,10 @@ def _wrap(text: str, indent: int = 4, bullet: str = "") -> str:
     import textwrap
 
     prefix = " " * indent
-    body = textwrap.fill(text, width=max(40, min(console.width, 96) - indent - 2))
+    # The margin must cover the bullet, or a three-character "OK " bullet
+    # pushes each line one column past the edge.
+    body = textwrap.fill(text, width=max(40, min(console.width, 96) - indent
+                                         - max(2, len(_plain(bullet)))))
     lines = body.splitlines()
     if not lines:
         return ""
@@ -237,6 +240,122 @@ def render_diff(console, report, indent: int = 2) -> None:
             "difference exactly."
             % (report.shared_facts, report.total_facts), indent=indent))
     console.print()
+
+
+def render_workbook(console, store, result, indent: int = 2) -> None:
+    """The `ingest-workbook` view: the figure, then what the workbook did."""
+    pad = " " * indent
+    head = result.headline
+
+    console.print("%s[dim]%s  |  %s[/dim]" % (pad, result.book, result.cell))
+    console.print("%s[bold]%s[/bold]" % (pad, head.label))
+    console.print("%s[bold cyan]%s[/bold cyan]   [dim]%s[/dim]"
+                  % (pad, usd(head.value), short(head.id)))
+    console.print()
+    console.print("%s[dim]%s formula cells evaluated | %s facts behind this "
+                  "figure[/dim]" % (pad, "{:,}".format(result.formula_cells),
+                                    "{:,}".format(len(store.closure(head.id)))))
+    console.print()
+
+    ref = result.reference
+    if ref is not None:
+        console.print(_wrap(
+            "The Orders, Pricebook, FX and Adjustments tabs, run through the "
+            "reference close:", indent=indent))
+        console.print("%s  %s   [dim]%s[/dim]"
+                      % (pad, usd(ref.net.value), short(ref.net.id)))
+        twins = sorted({r.get("label", "") for r in store.all_runs()
+                        if r.get("root") == ref.net.id
+                        and r.get("kind") != "workbook"
+                        and not r.get("label", "").startswith(
+                            "reference close over")})
+        if twins:
+            console.print(_wrap(
+                "The same id as the close run '%s' -- the pasted tabs hold "
+                "exactly the claims the source files hold, so they land on the "
+                "same facts." % twins[0], indent=indent + 2,
+                bullet="[green]OK[/green] "))
+        console.print()
+
+    for f in result.overrides:
+        d = f.detail
+        gives = d.get("formula gives")
+        text = ("%s holds a typed %s where every neighbouring row has a "
+                "formula. The formula would give %s. Last saved by %s."
+                % (f.cell, usd(d["typed"]),
+                   usd(gives) if gives else "a value this build cannot "
+                   "compute", d.get("author", "an unknown author")))
+        console.print(_wrap(text, indent=indent, bullet="[yellow]![/yellow] "))
+        console.print()
+
+    one = len(result.overrides) == 1
+    restored_matches = (ref is not None and result.restored_value is not None
+                        and result.restored_value == ref.net.value)
+    if result.override_effect is not None and not restored_matches:
+        console.print(_wrap(
+            "With the typed-over %s put back, the workbook reports %s: the "
+            "typed %s moved the headline by %s."
+            % ("formula" if one else "formulas", usd(result.restored_value),
+               "number" if one else "numbers",
+               _signed(result.override_effect)), indent=indent + 2))
+        console.print()
+
+    for f in result.cache_mismatches:
+        console.print(_wrap(
+            "%s. The saved value is stale or was edited; the figure is "
+            "recorded as the workbook claims it, so verification will reject "
+            "it." % f.message, indent=indent, bullet="[red]X[/red] "))
+        console.print()
+
+    for f in result.opaque:
+        console.print(_wrap(
+            "%s. Its lineage is kept, but it is never reported as verified."
+            % f.message, indent=indent, bullet="[yellow]![/yellow] "))
+        console.print()
+
+    if ref is not None:
+        delta = result.reference_delta
+        if delta == 0:
+            console.print(_wrap(
+                "The workbook agrees with the reference close to the cent.",
+                indent=indent, bullet="[green]OK[/green] "))
+        elif restored_matches:
+            console.print(_wrap(
+                "Put the %s back and the workbook reports %s, agreeing with "
+                "the reference close to the cent. The typed %s moved the "
+                "headline by %s, and %s the whole difference."
+                % ("formula" if one else "formulas",
+                   usd(result.restored_value),
+                   "number" if one else "numbers",
+                   _signed(result.override_effect),
+                   "is" if one else "are"),
+                indent=indent, bullet="[green]OK[/green] "))
+        else:
+            console.print(_wrap(
+                "The workbook differs from the reference close by %s, and the "
+                "findings above do not account for all of it."
+                % _signed(delta), indent=indent,
+                bullet="[yellow]![/yellow] "))
+        console.print()
+
+
+def _ingest(store, path, cell=None, label=None):
+    """ingest_workbook, with the errors a user can act on turned into messages."""
+    try:
+        from .workbook import ingest_workbook
+        return ingest_workbook(store, path, cell=cell, label=label)
+    except ModuleNotFoundError as exc:
+        if exc.name == "openpyxl":
+            raise click.ClickException(
+                "reading workbooks needs openpyxl: "
+                "pip install 'whence[workbook]'")
+        raise
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+
+def _is_workbook(ref: str) -> bool:
+    return ref.lower().endswith((".xlsx", ".xlsm")) and Path(ref).is_file()
 
 
 def render_verification(console, report) -> None:
@@ -424,9 +543,19 @@ def verify(ctx, ref):
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable form.")
 @click.pass_context
 def diff_cmd(ctx, ref_a, ref_b, as_json):
-    """Explain why two figures differ, in business terms."""
+    """Explain why two figures differ, in business terms.
+
+    Each side is a figure id -- or an .xlsx file, in which case its headline
+    is read in and compared.
+    """
     store = _store(ctx)
-    report = diff(store, _resolve(store, ref_a), _resolve(store, ref_b))
+    ids = []
+    for ref in (ref_a, ref_b):
+        if _is_workbook(ref):
+            ids.append(_ingest(store, ref).headline.id)
+        else:
+            ids.append(_resolve(store, ref))
+    report = diff(store, ids[0], ids[1])
 
     if as_json:
         click.echo(json.dumps(_diff_json(report), indent=2))
@@ -597,6 +726,27 @@ def reconcile_cmd(ctx, mapping_path, dbt_target, label):
 
     if not report.agrees:
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+
+@main.command(name="ingest-workbook")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--cell", default=None,
+              help="The figure to follow, e.g. 'Summary!B10'. Defaults to "
+                   "the cell the workbook names Headline.")
+@click.option("--label", default=None, help="A name for this run.")
+@click.pass_context
+def ingest_workbook_cmd(ctx, path, cell, label):
+    """Record a spreadsheet's figure, with the lineage of its formulas."""
+    store = _store(ctx)
+    result = _ingest(store, path, cell=cell, label=label)
+
+    console.print()
+    render_workbook(console, store, result)
+    console.print("  [dim]Ask it anything:[/dim]  %s explain %s"
+                  % (prog(), result.headline.id[:12]))
+    console.print()
 
 
 # ---------------------------------------------------------------------------

@@ -16,3 +16,8 @@
 # The fixtures are the inputs to a hash; diffing them as text is what you want,
 # but never let a tool "helpfully" reformat them.
 data/*.csv -diff=nodiff linguist-generated=false
+
+# Workbooks are hashed too -- their digest is the observation digest for every
+# cell read out of them -- and they are zip files, so any conversion at all
+# would corrupt them. Say so explicitly rather than trusting detection.
+*.xlsx binary

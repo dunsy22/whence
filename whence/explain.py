@@ -256,8 +256,7 @@ def findings(store: Store, closure: Dict[str, Fact]) -> List[str]:
             "recomputed: %s."
             % (count, amount, "was" if one else "were",
                "a person" if one else "people",
-               ", ".join(sorted(f.metadata.get("adj_id", f.short)
-                                for f in asserted)))
+               ", ".join(sorted(_asserted_name(store, f) for f in asserted)))
         )
 
     prices = [f for f in closure.values()
@@ -382,6 +381,13 @@ def _rate_date_under(store: Store, fact: Fact) -> str:
         if d:
             return d
     return ""
+
+
+def _asserted_name(store: Store, fact: Fact) -> str:
+    """How to name a typed number in a sentence: its journal id when it has
+    one, else the spreadsheet cell it was typed into, else its short id."""
+    return (fact.metadata.get("adj_id") or sighting(store, fact).get("cell")
+            or fact.short)
 
 
 def sighting(store: Store, fact: Fact) -> Dict[str, str]:

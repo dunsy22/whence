@@ -38,9 +38,12 @@ the truth.
 Requires Python 3.11 or newer.
 
 ```bash
-pip install -e .
+pip install -e ".[workbook]"
 python -m whence demo
 ```
+
+(`[workbook]` adds openpyxl, for the spreadsheet beat. Without it the demo
+skips that beat and runs everything else.)
 
 Or, without managing a virtual environment at all:
 
@@ -48,13 +51,13 @@ Or, without managing a virtual environment at all:
 uv run whence demo
 ```
 
-The demo is a scripted seven-beat walkthrough of a fictional company's quarter
+The demo is a scripted eight-beat walkthrough of a fictional company's quarter
 close. It runs in about four seconds and pauses between beats; add `--no-pause`
 to run straight through.
 
 ```bash
 python -m whence run --report board-deck.html   # a board page you can double-click
-python -m pytest                                # 99 tests
+python -m pytest                                # 161 tests
 ```
 
 > **Why `python -m whence` rather than just `whence`?**
@@ -101,7 +104,7 @@ it prints.
   Whence - where did this number come from?
   Halloway Instruments is closing FY2026 Q3. Nothing below is pre-recorded.
 
-1 / 7  Run the close --------------------------------------------------------------
+1 / 8  Run the close --------------------------------------------------------------
 
   Four files go in: an ERP order export, the pricebook, daily FX rates, and a
   handful of manual journal entries. One number comes out - the one that goes on
@@ -115,7 +118,7 @@ it prints.
   That id is not a database key. It is the SHA-256 of this figure's
   entire derivation. Change anything upstream and it becomes a different id.
 
-2 / 7  Ask the question everyone asks ---------------------------------------------
+2 / 8  Ask the question everyone asks ---------------------------------------------
 
   Someone on the board asks where the number came from. Today that is a week of
   email. Here it is one command, and the answer is a sentence, not a graph.
@@ -139,7 +142,7 @@ it prints.
                                   verified
 
 
-3 / 7  The uncomfortable part -----------------------------------------------------
+3 / 8  The uncomfortable part -----------------------------------------------------
 
   Nobody went looking for these. They are what falls out of asking a figure to
   account for itself.
@@ -159,7 +162,7 @@ it prints.
   unaltered, and it is marked - permanently - as something no amount of
   recomputation can confirm.
 
-4 / 7  The restatement ------------------------------------------------------------
+4 / 8  The restatement ------------------------------------------------------------
 
   APAC's export was a day late, so the first close was missing 14 orders.
   Meanwhile someone edited the pricebook. Close it again.
@@ -170,7 +173,7 @@ it prints.
   Both figures still exist. Nothing was overwritten - facts are append-only,
   so a restatement adds a number rather than replacing one.
 
-5 / 7  The reconciliation that used to take a week --------------------------------
+5 / 8  The reconciliation that used to take a week --------------------------------
 
   Two numbers, both called Q3 net revenue, $379,272.83 apart. The usual next step
   is two analysts and five days of spreadsheet archaeology.
@@ -201,7 +204,7 @@ it prints.
   Named actor, dated change, exact amount, and the assurance that
   nothing else moved.
 
-6 / 7  Two analysts, one truth ----------------------------------------------------
+6 / 8  Two analysts, one truth ----------------------------------------------------
 
   Dana and Priya were both asked for Q3 EMEA revenue. They wrote separate scripts
   - different structure, different iteration order, separate fact stores, no
@@ -221,13 +224,43 @@ it prints.
 
   Different, instantly. No comparison of numbers was needed to know that.
 
-7 / 7  Hand it to the auditor -----------------------------------------------------
+7 / 8  The same close, in a spreadsheet -------------------------------------------
+
+  In real life the number on slide 4 usually comes out of a workbook: exports
+  pasted into tabs, formulas written over them. Here is one an analyst built for
+  this quarter. Whence reads the .xlsx file itself - no Excel, no add-in - and
+  follows the headline cell's formulas all the way down.
+
+  q3_close.xlsx  |  Summary!B10
+  Q3 Net Revenue
+  $4,892,957.47   whence:0b1a7180b3a2
+
+  1,206 formula cells evaluated | 658 facts behind this figure
+
+  The Orders, Pricebook, FX and Adjustments tabs, run through the reference
+  close:
+    $4,892,582.47   whence:b0d8cc3b3885
+    OK The same id as the close run 'Q3 close (first pass)' -- the pasted tabs hold
+       exactly the claims the source files hold, so they land on the same facts.
+
+  ! Revenue!D12 holds a typed $32,175.00 where every neighbouring row has a
+    formula. The formula would give $31,800.00. Last saved by d.fairbanks.
+
+  OK Put the formula back and the workbook reports $4,892,582.47, agreeing with the
+     reference close to the cent. The typed number moved the headline by +$375.00,
+     and is the whole difference.
+
+  Nobody told it which cell was wrong. A typed number in a column of copied-down
+  formulas is what an overwritten formula looks like, and putting the formula
+  back is how you measure what it cost.
+
+8 / 8  Hand it to the auditor -----------------------------------------------------
 
   An auditor wants to check the restated figure. They do not get a login to the
   ERP, and they should not need one.
 
   bundle           q3-net-revenue.wbundle
-  contents         700 facts, 584 KB
+  contents         700 facts, 660 KB
   format           DSSE envelope, in-toto Statement v1
 
   The auditor's machine, in full:
@@ -361,6 +394,10 @@ without a test failing.
 | `whence attest <id> -o f.wbundle` | Export a portable, verifiable bundle |
 | `whence verify-bundle f.wbundle` | Verify with no access to source systems |
 | `whence reconcile` | Recompute a warehouse's figures and check they agree |
+| `whence ingest-workbook f.xlsx` | Record a spreadsheet's headline figure, with the lineage of its formulas |
+
+`diff` also accepts two `.xlsx` files in place of ids, and compares their
+headline figures.
 
 `explain` also takes `--tree` for the full DAG and `--json` for machines; the
 narrative is the default because it is the view that has to land with people
@@ -374,6 +411,45 @@ difference between the two headline figures. In the demo that is $43,840.00
 from three repriced SKUs plus $335,432.83 from fourteen late orders, summing to
 the $379,272.83 delta with a residual of exactly zero — out of the ~739 facts
 behind the two figures, of which 619 are shared and silent.
+
+---
+
+## Spreadsheets
+
+Most figures are not finished in a pipeline. They are finished in a workbook
+somebody built by pasting exports into tabs and writing formulas over them, and
+the number on the slide is whatever that workbook says.
+`whence ingest-workbook` reads the `.xlsx` file itself — no Excel, no add-in —
+and records that number with the same provenance as everything else.
+
+It works in two layers, and comparing them is the point:
+
+- **The pasted tabs** are read as tables, each cell turned into exactly the
+  text the CSV export holds, so they mint *the same source facts with the same
+  ids*. The reference close is then run over them. In the demo it lands on the
+  CSV close's id exactly: identity survives the trip into a spreadsheet.
+- **The analyst's formulas** are followed down from the headline cell, parsed,
+  evaluated, and recorded as ordinary `multiply` / `sum` / `subtract` facts
+  over the cells they read. The figure that results verifies, exports and
+  diffs like any other, and the verifier never needs to know it came from
+  Excel.
+
+Along the way it reports what a reviewer would want to know without being told
+where to look: a **typed number in a column of copied-down formulas** (recorded
+as `asserted`, and costed by re-evaluating the workbook with the formula put
+back); a **saved value that disagrees with its formula** (recorded as the
+workbook claims it, so the standard verifier rejects it); and any formula
+**outside the evaluator's subset** (kept in the lineage as `xl.opaque`, never
+reported as verified).
+
+The evaluator understands `+ - *`, `SUM`, `SUMIFS`, exact-match `VLOOKUP` and
+`ROUND(…, 2)`, and nothing else, on purpose. The established Python formula
+engines are copyleft — pycel is GPLv3, formulas is EUPL — and a verifier meant
+to be audited in an afternoon should not contain one anyway. `SPEC.md` §9
+pins down exactly how cells become text, which is what the same-id property
+rests on. The fixture workbooks are built from the CSVs by
+[`data/_workbook.py`](data/_workbook.py), committed so you can see exactly
+what is inside them.
 
 ---
 
@@ -416,15 +492,19 @@ whence/
   diff.py         minimal causal difference
   attest.py       bundle export and standalone verification
   warehouse.py    reading a warehouse, and reconciling what it computed
-  cli.py          seven commands, plus shared renderers
+  workbook.py     reading a spreadsheet: its pasted tabs and its formulas
+  formula.py      parsing formulas, and their position-independent form
+  arith.py        general-purpose sum and subtract, for lowered formulas
+  cli.py          eight commands, plus shared renderers
   demo.py         the scripted walkthrough
   report/         jinja2 template, CSS and JS, inlined at render time
-data/             the four fixture CSVs, their restated variants, and the
-                  seeded generator that produced them
+data/             the four fixture CSVs, their restated variants, the two
+                  analyst workbooks, and the generators that produced them
 demo/             two analysts' independently written scripts
 warehouse/        the same close as a dbt project, so the two can be compared
-tests/            154 tests: determinism, tamper-detection, diff correctness,
-                  bundle verification, spec conformance, reconciliation
+tests/            161 tests: determinism, tamper-detection, diff correctness,
+                  bundle verification, spec conformance, reconciliation,
+                  spreadsheets
 SPEC.md           the format, independent of this implementation
 ```
 
@@ -458,6 +538,12 @@ This is a demonstration of an idea, not a product.
   everything.
 - **Only the closing FX rate is used.** The daily rate file is read and cited,
   but a transaction-date policy would be a different (one-line) choice.
+- **The spreadsheet evaluator is small, and lookups are not replayable.** Five
+  functions and three operators. Which rows a `VLOOKUP` or `SUMIFS` selected
+  is checked when the workbook is read, but a bundle carries the arithmetic
+  over the selected cells, not the selection; a verifier cannot re-run the
+  lookup. The HTML board page is still shaped around the reference close and
+  does not yet render workbook figures; the terminal does.
 - **`diff` cannot always split a delta.** When two inputs to a single
   multiplication both change, the causes are still identified but the dollar
   attribution between them is not exact. The report says so instead of
@@ -472,9 +558,12 @@ This is a demonstration of an idea, not a product.
   from the warehouse's own rows and checking they agree. Reads go through
   DB-API 2.0, so the DuckDB it develops against is a connection string away
   from a real warehouse. What it does not yet survive is scale.
-- **A spreadsheet add-in.** Numbers escape into Excel immediately and forever.
-  Provenance that does not survive a copy-paste into a spreadsheet has not
-  solved the actual problem.
+- **Live in-Excel capture** — an Office add-in, or a Python-in-add-in route such
+  as xlwings Lite — so that who typed a number, and when, is recorded as it
+  happens rather than recovered afterwards from the file. Numbers escape into
+  Excel immediately and forever. The file-based reader in this repository
+  (`whence ingest-workbook`) already covers the offline and audit case: hand it
+  the workbook that was sent, and it says what that workbook did.
 - **A shared, multi-user provenance store** with concurrent writers, access
   control, and retention — rather than a directory on one laptop.
 - **Signing with real key custody**, so a bundle attests to its origin and not

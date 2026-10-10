@@ -28,9 +28,15 @@ dependencies = [
 # DB-API connection -- snowflake-connector-python, psycopg -- and hands it to
 # reconcile(), which never asks what made it.
 warehouse = ["duckdb>=1.0"]
+# openpyxl (MIT) reads .xlsx files for `whence ingest-workbook`. It is imported
+# lazily by whence.workbook only, so the verifier -- which must run on an
+# auditor's machine with nothing installed -- never needs it.
+workbook = ["openpyxl>=3.1"]
 # The warehouse tests skip themselves without a driver, so dev pulls one in:
 # a reconciliation that only ever runs on the author's laptop is not tested.
-dev = ["pytest>=7.4", "whence[warehouse]"]
+# XlsxWriter (BSD) writes the fixture workbooks and the small ones the tests
+# build; it can store a formula's cached result, which openpyxl cannot.
+dev = ["pytest>=7.4", "whence[warehouse]", "whence[workbook]", "xlsxwriter>=3.0"]
 
 [project.scripts]
 whence = "whence.cli:main"

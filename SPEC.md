@@ -80,7 +80,9 @@ this" will have people typing things into it anyway, unlabelled.
 `transform` names an operation. It is an opaque string as far as this format is
 concerned; §4 covers what a verifier does with it. The transforms used by the
 reference pipeline are `read`, `assert`, `multiply`, `fx_convert`,
-`sum_by_region`, `sum_regions` and `apply_adjustments`.
+`sum_by_region`, `sum_regions` and `apply_adjustments`. Formulas read out of a
+spreadsheet (§9) are recorded with the general-purpose `multiply`, `sum` and
+`subtract`, and a formula the reader cannot evaluate with `xl.opaque`.
 
 ---
 
@@ -327,10 +329,17 @@ Transforms in the reference pipeline:
 | `sum_by_region` | n | yes | sum |
 | `sum_regions` | n | yes | sum |
 | `apply_adjustments` | n | yes | sum |
+| `sum` | n | yes | sum |
+| `subtract` | 2 | no | first − second |
 
-All five are money and all five are at the default scale, so none of them
+All seven are money and all seven are at the default scale, so none of them
 carries a `quantize` key. Half-up rounding to two decimal places is applied to
 each result as the Fact is minted.
+
+`xl.opaque` is deliberately absent from this table, and from every
+implementation's registry. It names a spreadsheet formula that could not be
+evaluated (§9.3), so by step 2 above every verifier reports such a Fact as not
+verifiable — which is exactly what it is.
 
 ---
 
@@ -560,3 +569,96 @@ change — metadata is open, and a new key simply produces a different Fact.
 reflects the major version, and `0.x` versions are each treated as major.
 
 Section 5 is informative and may change freely.
+
+---
+
+## 9. Reading spreadsheets
+
+This section is **informative**: it describes how the reference workbook
+reader (`whence/workbook.py`) turns cells into Facts. Nothing here changes §3.
+It is written down because it determines identifiers — a second reader that
+spelled a cell differently would mint different ones — and because the
+property it exists for is checkable: a table pasted into a workbook mints the
+same source Facts as the CSV it came from.
+
+### 9.1 Cell values as text
+
+| Cell holds | Text |
+|---|---|
+| a number | fixed-point at the scale its **number format** declares (below), rounded half-up |
+| a number, format General | the shortest decimal that round-trips to the stored double, with no exponent; an integral value has no decimal point |
+| a date | ISO 8601, `YYYY-MM-DD` |
+| a date and time | ISO 8601 to the second, no zone (spreadsheets do not store one) |
+| text | verbatim |
+| a boolean | `TRUE` or `FALSE` |
+| nothing, inside a table | the empty string |
+
+**Scale from number format.** A spreadsheet stores binary doubles; what says
+how many decimal places a value carries is its number format, which is also
+what the person looking at it saw. Only the first section of the format (the
+positive-number section) counts. Quoted literal text, bracketed colours and
+conditions, escaped characters, and padding are ignored; the scale is the
+number of `0`, `#` or `?` placeholders after the decimal point. A `%` format
+adds two places. A format with no digit placeholders, or a scientific format,
+declares no scale.
+
+| Format | Scale | 1.0 is written |
+|---|---|---|
+| `#,##0.00` | 2 | `1.00` |
+| `0.0000` | 4 | `1.0000` |
+| `0` | 0 | `1` |
+| `0.00%` | 4 | `1.0000` |
+| General | — | `1` |
+
+**Dates** are converted using the workbook's own epoch, so the 1904 date system
+used by some older Mac workbooks, and the 1900 system's nonexistent
+29 February 1900, are handled before a date is written. A reader MUST NOT
+write a serial number where the cell is formatted as a date.
+
+A blank cell inside a table is the empty string because a spreadsheet has no
+other way to say it: unlike a database (whose NULL a reader must not collapse,
+see `whence/warehouse.py`), it cannot distinguish an empty value from an absent
+one.
+
+### 9.2 Where a cell was seen
+
+The sheet name, the cell address and the workbook's SHA-256 are observations
+(§5.2), recorded as:
+
+```json
+{"fact": "<id>", "file": "q3_close.xlsx [Pricebook]", "row": "13",
+ "column": "list_price", "cell": "Pricebook!B13", "digest": "<sha256 of the .xlsx>"}
+```
+
+None of them is hashed into a Fact, for the reason given in §3.8: inserting a
+row above a figure must not change what the figure claims.
+
+### 9.3 Formulas
+
+A formula becomes a derived Fact whose transform is the arithmetic it performs
+— `multiply`, `sum` or `subtract` — over the Facts of the cells it reads, with
+its position-independent text recorded in metadata under `xl.formula`. That
+text is the formula with every reference rewritten relative to the cell that
+holds it, in Excel's own R1C1 notation (`=ROUND(R[0]C[-2]*R[0]C[-1],2)`), so a
+formula copied down a column is one formula, not one per row.
+
+Lookups and conditional sums (`VLOOKUP`, `SUMIFS`) select which cells take
+part; the selected cells' Facts become the inputs. The selection itself is
+checked when the workbook is read, by re-evaluating the formula, but it is
+**not** replayable from a bundle: a verifier re-runs the arithmetic over the
+inputs the Fact names, not the lookup that chose them.
+
+A number written into a formula (`=B4*1.08`) is an assumption somebody made,
+and is recorded as its own `asserted` Fact. So is a number typed into a cell
+in a column of identical, copied-down formulas, which is what an overwritten
+formula looks like.
+
+A formula outside the reader's subset is recorded with transform `xl.opaque`,
+the Facts of the cells it references as inputs, and the value the workbook
+saved for it. Its lineage is therefore preserved and it is never reported as
+verified (§4).
+
+Money is recorded at two places (§3.7). A formula whose result is not exact to
+the cent, and which does not round it itself with `ROUND(…, 2)`, has no honest
+two-place form and is recorded as `xl.opaque` rather than rounded silently.
+

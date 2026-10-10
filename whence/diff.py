@@ -38,7 +38,7 @@ from .core import Fact, Store, dec
 from .explain import usd
 
 #: Nodes whose children's deltas sum to the node's own delta.
-ADDITIVE = {"sum_by_region", "sum_regions", "apply_adjustments"}
+ADDITIVE = {"sum_by_region", "sum_regions", "apply_adjustments", "sum"}
 
 
 @dataclass
