@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The scripted walkthrough.
 
-Seven beats, in the order that makes the argument. Nothing here is staged:
+Eight beats, in the order that makes the argument. Nothing here is staged:
 every number printed is computed during the run, every id is the real hash of
 the real record, and the two analyst scripts in demo/ are executed as actual
 subprocesses in actual separate directories. If the pipeline broke, this demo
@@ -34,7 +34,7 @@ def run_demo(console, store_path: str = ".whence", pause: bool = True) -> None:
         console.print()
         # characters="-" rather than rich's default box-drawing rule: a
         # Windows console falls back to cp1252 and raises on U+2500.
-        console.rule("[dim]%d / 7[/dim]  [bold]%s[/bold]" % (n, title),
+        console.rule("[dim]%d / 8[/dim]  [bold]%s[/bold]" % (n, title),
                      align="left", style="dim", characters="-")
         console.print()
         for line in framing:
@@ -178,7 +178,18 @@ def run_demo(console, store_path: str = ".whence", pause: bool = True) -> None:
     hold()
 
     # -- 7 -----------------------------------------------------------------
-    beat(7, "Hand it to the auditor",
+    beat(7, "The same close, in a spreadsheet",
+         "In real life the number on slide 4 usually comes out of a workbook: "
+         "exports pasted into tabs, formulas written over them. Here is one an "
+         "analyst built for this quarter. Whence reads the .xlsx file itself - "
+         "no Excel, no add-in - and follows the headline cell's formulas all "
+         "the way down.")
+
+    _workbook_beat(console, store)
+    hold()
+
+    # -- 8 -----------------------------------------------------------------
+    beat(8, "Hand it to the auditor",
          "An auditor wants to check the restated figure. They do not get a "
          "login to the ERP, and they should not need one.")
 
@@ -223,6 +234,32 @@ def run_demo(console, store_path: str = ".whence", pause: bool = True) -> None:
         console.print("    [dim]%s[/dim] %s" % (prog(), suggestion))
     console.print()
 
+
+# ---------------------------------------------------------------------------
+
+def _workbook_beat(console, store) -> None:
+    """Beat 7. Kept separate so that a checkout without the optional
+    spreadsheet dependency still runs every other beat."""
+    from .cli import _wrap, render_workbook
+
+    try:
+        from .workbook import ingest_workbook
+        result = ingest_workbook(store, DATA / "q3_close.xlsx",
+                                 label="analyst workbook")
+    except ModuleNotFoundError as exc:
+        if exc.name != "openpyxl":
+            raise
+        # \[ so rich prints the extra's name instead of reading it as markup.
+        console.print(_wrap("Skipped: reading workbooks needs openpyxl "
+                            "(pip install 'whence\\[workbook]').", indent=2))
+        return
+
+    render_workbook(console, store, result)
+    console.print(_wrap(
+        "Nobody told it which cell was wrong. A typed number in a column of "
+        "copied-down formulas is what an overwritten formula looks like, and "
+        "putting the formula back is how you measure what it cost.",
+        indent=2))
 
 # ---------------------------------------------------------------------------
 

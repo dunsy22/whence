@@ -154,7 +154,7 @@ def _load_transforms() -> None:
     verification would report every derived figure as "unknown transform":
     honest, but useless, and alarming in exactly the wrong way.
     """
-    from . import pipeline  # noqa: F401  (importing is the registration)
+    from . import arith, pipeline  # noqa: F401  (importing is the registration)
 
 
 def verify_closure(store: Store, root: str) -> VerifyReport:

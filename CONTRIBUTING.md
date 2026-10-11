@@ -29,6 +29,8 @@ test will fail, and it is supposed to.
 Everything else. Change it freely:
 
 - the pipeline and its transforms (`whence/pipeline.py`)
+- the spreadsheet reader and its formula evaluator (`whence/workbook.py`,
+  `whence/formula.py`); `SPEC.md` §9 is informative, not normative
 - narrative rendering and the `diff` attribution heuristics
 - the CLI, its output, and the demo script
 - the HTML report
@@ -57,7 +59,7 @@ commercial offering. If it is in the repository, it works.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest            # 99 tests, about 9 seconds
+python -m pytest            # 161 tests, about 6 seconds
 python -m whence demo --no-pause
 ```
 
@@ -68,7 +70,8 @@ that ratio is the right one.
 
 If you regenerate the fixtures with `python data/_generate.py`, every
 identifier in the README transcript and in `SPEC.md` §3.5 changes. Regenerate
-those too, or don't regenerate the fixtures.
+those too, or don't regenerate the fixtures. The workbooks are built from the
+CSVs by `python data/_workbook.py`, so regenerate them after the CSVs.
 
 ## Licensing
 
